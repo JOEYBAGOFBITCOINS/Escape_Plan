@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "npm:hono": "npm:hono@4.6.11",
+    "npm:hono/cors": "npm:hono@4.6.11/cors",
+    "npm:hono/logger": "npm:hono@4.6.11/logger",
+    "jsr:@supabase/supabase-js@2": "jsr:@supabase/supabase-js@2"
+  }
+}
