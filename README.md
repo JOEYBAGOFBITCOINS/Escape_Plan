@@ -1,7 +1,7 @@
 
-  # Improve Existing Design
+  # FuelTrakr
 
-  This is a code bundle for Improve Existing Design. The original project is available at https://www.figma.com/design/NRIukBWwVyqCNbudOkIbSc/Improve-Existing-Design.
+  This is a code bundle for FuelTrakr. The original project is available at https://www.figma.com/design/NRIukBWwVyqCNbudOkIbSc/FuelTrakr.
 
   ## Running the code
 

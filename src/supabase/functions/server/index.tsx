@@ -270,10 +270,25 @@ app.post('/make-server-218dc5b7/fuel-entries', requireAuth, async (c) => {
     const user = c.get('user')
     const entryData = await c.req.json()
     
+    // If VIN is provided, get vehicle data
+    let vehicleData = null
+    if (entryData.vin) {
+      const normalizedVin = entryData.vin.toUpperCase()
+      vehicleData = await kv.get(`vehicle:${normalizedVin}`)
+      
+      // If not cached, this will be decoded separately via /decode-vin endpoint
+      console.log(`Fuel entry for VIN ${normalizedVin}, cached vehicle data: ${vehicleData ? 'found' : 'not found'}`)
+    }
+    
     const fuelEntry = {
       id: crypto.randomUUID(),
       user_id: user.id,
       ...entryData,
+      // Include vehicle data if available
+      vehicle_year: vehicleData?.year || null,
+      vehicle_make: vehicleData?.make || null,
+      vehicle_model: vehicleData?.model || null,
+      vehicle_trim: vehicleData?.trim || null,
       created_at: new Date().toISOString()
     }
 
@@ -441,6 +456,151 @@ app.delete('/make-server-218dc5b7/admin/users/:userId', requireAuth, async (c) =
   }
 })
 
+// VIN Decoder with NHTSA API and caching
+app.post('/make-server-218dc5b7/decode-vin', requireAuth, async (c) => {
+  try {
+    const { vin } = await c.req.json()
+    
+    if (!vin) {
+      return c.json({ error: 'VIN is required' }, 400)
+    }
+
+    // Validate VIN format
+    const vinPattern = /^[A-HJ-NPR-Z0-9]{17}$/
+    if (!vinPattern.test(vin.toUpperCase())) {
+      return c.json({ 
+        error: 'Invalid VIN format. VIN must be 17 characters.',
+        valid: false 
+      }, 400)
+    }
+
+    const normalizedVin = vin.toUpperCase()
+    
+    // Check cache first
+    const cachedVehicle = await kv.get(`vehicle:${normalizedVin}`)
+    if (cachedVehicle) {
+      console.log(`VIN ${normalizedVin} found in cache`)
+      return c.json(cachedVehicle)
+    }
+
+    console.log(`Decoding VIN ${normalizedVin} via NHTSA API...`)
+    
+    try {
+      // Call NHTSA VIN Decoder API
+      const response = await fetch(
+        `https://vpic.nhtsa.dot.gov/api/vehicles/decodevin/${normalizedVin}?format=json`
+      )
+
+      if (!response.ok) {
+        throw new Error(`NHTSA API returned ${response.status}`)
+      }
+
+      const data = await response.json()
+      const results = data.Results || []
+
+      // Extract vehicle information
+      const findResult = (variableName: string): string => {
+        const result = results.find((r: any) => r.Variable === variableName)
+        return result?.Value || ''
+      }
+
+      const vehicleData = {
+        vin: normalizedVin,
+        year: findResult('Model Year'),
+        make: findResult('Make'),
+        model: findResult('Model'),
+        trim: findResult('Trim'),
+        engine: findResult('Engine Model'),
+        displacement: findResult('Displacement (L)'),
+        cylinders: findResult('Engine Number of Cylinders'),
+        fuel_type: findResult('Fuel Type - Primary'),
+        vehicle_type: findResult('Vehicle Type'),
+        body_class: findResult('Body Class'),
+        drive_type: findResult('Drive Type'),
+        transmission: findResult('Transmission Style'),
+        manufacturer: findResult('Manufacturer Name'),
+        plant_city: findResult('Plant City'),
+        plant_state: findResult('Plant State'),
+        valid: false,
+        cached_at: new Date().toISOString(),
+        error: null
+      }
+
+      // Determine if VIN decode was successful
+      const hasRequiredData = vehicleData.year && vehicleData.make && vehicleData.model
+      vehicleData.valid = !!hasRequiredData
+
+      if (!hasRequiredData) {
+        vehicleData.error = 'Vehicle information not found for this VIN'
+        console.log(`VIN ${normalizedVin} decode failed - insufficient data`)
+      } else {
+        console.log(`VIN ${normalizedVin} decoded successfully: ${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`)
+      }
+
+      // Cache the result (cache both successful and failed lookups)
+      await kv.set(`vehicle:${normalizedVin}`, vehicleData)
+      
+      return c.json(vehicleData)
+      
+    } catch (apiError) {
+      console.error('NHTSA API error:', apiError)
+      
+      const errorResponse = {
+        vin: normalizedVin,
+        year: '',
+        make: '',
+        model: '',
+        valid: false,
+        error: 'Failed to decode VIN via NHTSA API',
+        cached_at: new Date().toISOString()
+      }
+      
+      // Cache error result for 30 minutes to avoid repeated failed API calls
+      await kv.set(`vehicle:${normalizedVin}`, errorResponse)
+      
+      return c.json(errorResponse, 500)
+    }
+  } catch (error) {
+    console.error('VIN decode error:', error)
+    return c.json({ error: 'Failed to decode VIN' }, 500)
+  }
+})
+
+// Get vehicle by VIN (cached lookup only)
+app.get('/make-server-218dc5b7/vehicles/:vin', requireAuth, async (c) => {
+  try {
+    const vin = c.req.param('vin').toUpperCase()
+    
+    const vehicle = await kv.get(`vehicle:${vin}`)
+    if (!vehicle) {
+      return c.json({ error: 'Vehicle not found in cache' }, 404)
+    }
+    
+    return c.json(vehicle)
+  } catch (error) {
+    console.error('Get vehicle error:', error)
+    return c.json({ error: 'Failed to fetch vehicle' }, 500)
+  }
+})
+
+// Admin: Get all cached vehicles
+app.get('/make-server-218dc5b7/admin/vehicles', requireAuth, async (c) => {
+  try {
+    const user = c.get('user')
+    const userProfile = await kv.get(`user:${user.id}`)
+    
+    if (userProfile?.role !== 'admin') {
+      return c.json({ error: 'Admin access required' }, 403)
+    }
+
+    const vehicles = await kv.getByPrefix('vehicle:')
+    return c.json(vehicles)
+  } catch (error) {
+    console.error('Get vehicles error:', error)
+    return c.json({ error: 'Failed to fetch vehicles' }, 500)
+  }
+})
+
 // Admin: Export data
 app.get('/make-server-218dc5b7/admin/export', requireAuth, async (c) => {
   try {
@@ -457,6 +617,7 @@ app.get('/make-server-218dc5b7/admin/export', requireAuth, async (c) => {
     // Create CSV data
     const csvHeaders = [
       'Entry ID', 'User Name', 'User Email', 'Stock Number', 'VIN',
+      'Vehicle Year', 'Vehicle Make', 'Vehicle Model', 'Vehicle Trim',
       'Gallons', 'Price Per Gallon', 'Total Amount', 'Odometer',
       'Fuel Type', 'Location', 'Timestamp', 'Notes'
     ]
@@ -467,8 +628,12 @@ app.get('/make-server-218dc5b7/admin/export', requireAuth, async (c) => {
         entry.id,
         entryUser?.name || '',
         entryUser?.email || '',
-        entry.stock_number,
+        entry.stock_number || '',
         entry.vin || '',
+        entry.vehicle_year || '',
+        entry.vehicle_make || '',
+        entry.vehicle_model || '',
+        entry.vehicle_trim || '',
         entry.gallons,
         entry.price_per_gallon,
         entry.total_amount,

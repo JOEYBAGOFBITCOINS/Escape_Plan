@@ -1,5 +1,18 @@
 @custom-variant dark (&:is(.dark *));
 
+/* VIN Scanner Landscape Detection */
+@media (orientation: portrait) {
+  .portrait\:flex {
+    display: flex !important;
+  }
+}
+
+@media (orientation: landscape) {
+  .landscape\:hidden {
+    display: none !important;
+  }
+}
+
 :root {
   --font-size: 14px;
   --background: #ffffff;

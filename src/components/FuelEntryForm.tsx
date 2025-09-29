@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, MapPin, Car, Receipt, Save, X, Plus } from 'lucide-react';
 import { GlassmorphicButton } from './GlassmorphicButton';
+import { CameraCapture } from './CameraCapture';
+import { VehicleIdentification } from './VehicleIdentification';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { toast } from 'sonner@2.0.3';
 import { FuelEntry } from '../App';
+import { VehicleInfo } from '../services/vinService';
 
 interface FuelEntryFormProps {
   onSubmit: (entry: Omit<FuelEntry, 'id' | 'userId' | 'userName' | 'submittedAt'>) => void;
@@ -38,6 +41,15 @@ export const FuelEntryForm: React.FC<FuelEntryFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [submittedEntry, setSubmittedEntry] = useState<any>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraMode, setCameraMode] = useState<'receipt' | 'vin'>('receipt');
+  const [currentStep, setCurrentStep] = useState<'vehicle' | 'details'>('vehicle');
+  const [vehicleData, setVehicleData] = useState<{
+    stockNumber?: string;
+    vin?: string;
+    vinPhoto?: string;
+    vehicleInfo?: VehicleInfo;
+  }>({});
 
   // Get location on component mount with error handling
   useEffect(() => {
@@ -172,29 +184,20 @@ export const FuelEntryForm: React.FC<FuelEntryFormProps> = ({
     }));
   };
 
-  const handlePhotoCapture = async (type: 'receipt' | 'vin') => {
-    try {
-      // Mock photo capture with simulated camera access
-      // In a real app, you'd use navigator.mediaDevices.getUserMedia()
-      toast.info(`Opening camera for ${type} photo...`);
-      
-      // Simulate camera delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock photo URL (in real app, this would be from camera)
-      const mockPhotoUrl = `data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=`;
-      
-      if (type === 'receipt') {
-        setReceiptPhoto(mockPhotoUrl);
-        toast.success('Receipt photo captured successfully');
-      } else {
-        setVinPhoto(mockPhotoUrl);
-        toast.success('VIN photo captured successfully');
-      }
-    } catch (error) {
-      console.error('Photo capture error:', error);
-      toast.error(`Failed to capture ${type} photo. Please try again.`);
+  const handlePhotoCapture = (type: 'receipt' | 'vin') => {
+    setCameraMode(type);
+    setShowCamera(true);
+  };
+
+  const handleCameraCapture = (photoDataUrl: string) => {
+    if (cameraMode === 'receipt') {
+      setReceiptPhoto(photoDataUrl);
+      toast.success('Receipt photo captured successfully');
+    } else {
+      setVinPhoto(photoDataUrl);
+      toast.success('VIN photo captured successfully');
     }
+    setShowCamera(false);
   };
 
   const removePhoto = (type: 'receipt' | 'vin') => {
@@ -253,8 +256,9 @@ export const FuelEntryForm: React.FC<FuelEntryFormProps> = ({
     // Simulate submission delay
     setTimeout(() => {
       const entryData = {
-        stockNumber: formData.stockNumber || undefined,
-        vin: vinPhoto ? 'VIN_FROM_PHOTO' : undefined, // VIN extracted from photo
+        stockNumber: vehicleData.stockNumber || formData.stockNumber || undefined,
+        vin: vehicleData.vin || undefined,
+        vehicleInfo: vehicleData.vehicleInfo || undefined,
         mileage: Number(formData.mileage),
         fuelAmount: Number(formData.fuelAmount),
         fuelCost: Number(formData.fuelCost),
@@ -262,13 +266,32 @@ export const FuelEntryForm: React.FC<FuelEntryFormProps> = ({
         notes: formData.notes || undefined,
         location,
         receiptPhoto,
-        vinPhoto: vinPhoto || undefined
+        vinPhoto: vehicleData.vinPhoto || vinPhoto || undefined
       };
 
       setSubmittedEntry(entryData);
       setIsSubmitting(false);
       setShowConfirmation(true);
     }, 2000);
+  };
+
+  const handleVehicleIdentified = (data: {
+    stockNumber?: string;
+    vin?: string;
+    vinPhoto?: string;
+    vehicleInfo?: VehicleInfo;
+  }) => {
+    setVehicleData(data);
+    setFormData(prev => ({
+      ...prev,
+      stockNumber: data.stockNumber || ''
+    }));
+    setVinPhoto(data.vinPhoto || '');
+    setCurrentStep('details');
+  };
+
+  const handleBackToVehicle = () => {
+    setCurrentStep('vehicle');
   };
 
   const handleConfirmSubmission = () => {
@@ -396,87 +419,69 @@ export const FuelEntryForm: React.FC<FuelEntryFormProps> = ({
     );
   }
 
+  // Render Vehicle Identification step
+  if (currentStep === 'vehicle') {
+    return (
+      <VehicleIdentification
+        onVehicleIdentified={handleVehicleIdentified}
+        onBack={onBack}
+        initialData={vehicleData}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-white/10">
         <button
-          onClick={onBack}
+          onClick={handleBackToVehicle}
           className="flex items-center text-slate-300 hover:text-white transition-colors"
         >
           <ArrowLeft className="w-5 h-5 mr-2" />
           Back
         </button>
-        <h1 className="text-white text-lg font-medium">Fuel Entry</h1>
+        <h1 className="text-white text-lg font-medium">Fuel Details</h1>
         <div className="w-6"></div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-        {/* Vehicle Identification */}
+        {/* Vehicle Summary */}
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-6">
           <h3 className="text-white text-lg mb-4 flex items-center">
             <Car className="w-5 h-5 mr-2" />
-            Vehicle Identification
+            Vehicle Identified
           </h3>
           
-          <div className="space-y-4">
-            <div>
-              <label className="text-white text-sm font-medium mb-2 block">
-                Stock Number (Preferred)
-              </label>
-              <Input
-                value={formData.stockNumber}
-                onChange={(e) => handleInputChange('stockNumber', e.target.value)}
-                placeholder="Enter stock number"
-                className="bg-white/5 border-white/20 text-white placeholder-slate-400 focus:border-blue-400/50 focus:ring-blue-400/20"
-              />
-              <p className="text-slate-400 text-xs mt-1">Enter the vehicle's stock number if available</p>
-            </div>
-
-            {!formData.stockNumber.trim() && (
-              <>
-                <div className="text-center text-slate-400 text-sm">OR</div>
-                
-                <div>
-                  <label className="text-white text-sm font-medium mb-2 block">
-                    VIN Photo (Required if no stock number)
-                  </label>
-                  <p className="text-slate-400 text-xs mb-3">
-                    Take a clear photo of the vehicle's VIN plate
-                  </p>
-                  
-                  {vinPhoto ? (
-                    <div className="relative bg-white/5 rounded-xl p-4 border border-white/10">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center mr-3">
-                            <Car className="w-6 h-6 text-green-400" />
-                          </div>
-                          <div>
-                            <p className="text-white text-sm font-medium">VIN Photo Captured</p>
-                            <p className="text-slate-400 text-xs">Ready for submission</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removePhoto('vin')}
-                          className="text-red-400 hover:text-red-300 p-1"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <GlassmorphicButton
-                      variant="secondary"
-                      onClick={() => handlePhotoCapture('vin')}
-                      className="w-full"
-                    >
-                      <Camera className="w-5 h-5 mr-2" />
-                      Take VIN Photo
-                    </GlassmorphicButton>
-                  )}
-                </div>
-              </>
+          <div className="space-y-3">
+            {vehicleData.stockNumber && (
+              <div className="flex justify-between items-center">
+                <span className="text-slate-300">Stock Number:</span>
+                <span className="text-white font-medium">{vehicleData.stockNumber}</span>
+              </div>
+            )}
+            
+            {vehicleData.vin && (
+              <div className="flex justify-between items-center">
+                <span className="text-slate-300">VIN:</span>
+                <span className="text-white font-mono text-sm">{vehicleData.vin}</span>
+              </div>
+            )}
+            
+            {vehicleData.vehicleInfo && vehicleData.vehicleInfo.valid && (
+              <div className="flex justify-between items-center">
+                <span className="text-slate-300">Vehicle:</span>
+                <span className="text-white font-medium">
+                  {vehicleData.vehicleInfo.year} {vehicleData.vehicleInfo.make} {vehicleData.vehicleInfo.model}
+                </span>
+              </div>
+            )}
+            
+            {vehicleData.vinPhoto && (
+              <div className="flex items-center text-green-400 text-sm">
+                <Camera className="w-4 h-4 mr-2" />
+                VIN scanned
+              </div>
             )}
           </div>
         </div>
@@ -653,6 +658,15 @@ export const FuelEntryForm: React.FC<FuelEntryFormProps> = ({
           )}
         </GlassmorphicButton>
       </div>
+
+      {/* Camera Component */}
+      <CameraCapture
+        isOpen={showCamera}
+        onClose={() => setShowCamera(false)}
+        onCapture={handleCameraCapture}
+        title={cameraMode === 'receipt' ? 'Capture Receipt Photo' : 'Capture VIN Photo'}
+        subtitle={cameraMode === 'receipt' ? 'Take a clear photo of your fuel receipt' : 'Take a clear photo of the vehicle VIN'}
+      />
     </div>
   );
 };

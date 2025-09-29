@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Home, Plus, BarChart3, List, Settings, LogOut } from 'lucide-react';
 import { GlassmorphicButton } from './GlassmorphicButton';
 import { ImageWithFallback } from './figma/ImageWithFallback';
@@ -173,19 +173,22 @@ export const MainApp: React.FC<MainAppProps> = ({
                 </GlassmorphicButton>
                 
                 <div className="grid grid-cols-2 gap-4">
-                  <GlassmorphicButton 
-                    variant="secondary"
-                    size="medium"
-                    onClick={() => setActiveTab('stats')}
-                  >
-                    <BarChart3 className="w-5 h-5 mr-2" />
-                    <span>Statistics</span>
-                  </GlassmorphicButton>
+                  {user.role === 'admin' && (
+                    <GlassmorphicButton 
+                      variant="secondary"
+                      size="medium"
+                      onClick={() => setActiveTab('stats')}
+                    >
+                      <BarChart3 className="w-5 h-5 mr-2" />
+                      <span>Statistics</span>
+                    </GlassmorphicButton>
+                  )}
                   
                   <GlassmorphicButton 
                     variant="secondary"
                     size="medium"
                     onClick={() => setActiveTab('history')}
+                    className={user.role === 'porter' ? 'col-span-2' : ''}
                   >
                     <List className="w-5 h-5 mr-2" />
                     <span>History</span>
@@ -216,30 +219,62 @@ export const MainApp: React.FC<MainAppProps> = ({
               </div>
             </div>
 
-            {/* Quick Stats */}
-            <div className="px-8 pb-8">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-4">
-                <h3 className="text-white text-sm font-medium mb-3">Quick Stats</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 rounded-xl p-3 text-center">
-                    <p className="text-slate-300 text-xs">This Month</p>
-                    <p className="text-white text-lg font-medium">
-                      {fuelEntries.filter(entry => 
-                        new Date(entry.timestamp).getMonth() === new Date().getMonth()
-                      ).length}
-                    </p>
-                    <p className="text-slate-400 text-xs">entries</p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl p-3 text-center">
-                    <p className="text-slate-300 text-xs">Total Spent</p>
-                    <p className="text-white text-lg font-medium">
-                      ${fuelEntries.reduce((sum, entry) => sum + entry.fuelCost, 0).toFixed(0)}
-                    </p>
-                    <p className="text-slate-400 text-xs">lifetime</p>
+            {/* Porter Stats - Activity Only, No Financial Data */}
+            {user.role === 'porter' && (
+              <div className="px-8 pb-8">
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-4">
+                  <h3 className="text-white text-sm font-medium mb-3">Your Activity</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-slate-300 text-xs">Runs Today</p>
+                      <p className="text-white text-lg font-medium">
+                        {fuelEntries.filter(entry => {
+                          const today = new Date().toDateString();
+                          return new Date(entry.timestamp).toDateString() === today;
+                        }).length}
+                      </p>
+                      <p className="text-slate-400 text-xs">completed</p>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-slate-300 text-xs">This Month</p>
+                      <p className="text-white text-lg font-medium">
+                        {fuelEntries.filter(entry => 
+                          new Date(entry.timestamp).getMonth() === new Date().getMonth()
+                        ).length}
+                      </p>
+                      <p className="text-slate-400 text-xs">runs</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Admin Stats - Show Financial Data */}
+            {user.role === 'admin' && (
+              <div className="px-8 pb-8">
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-4">
+                  <h3 className="text-white text-sm font-medium mb-3">Financial Overview</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-slate-300 text-xs">This Month</p>
+                      <p className="text-white text-lg font-medium">
+                        ${fuelEntries.filter(entry => 
+                          new Date(entry.timestamp).getMonth() === new Date().getMonth()
+                        ).reduce((sum, entry) => sum + entry.fuelCost, 0).toFixed(0)}
+                      </p>
+                      <p className="text-slate-400 text-xs">spent</p>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-slate-300 text-xs">Total Spent</p>
+                      <p className="text-white text-lg font-medium">
+                        ${fuelEntries.reduce((sum, entry) => sum + entry.fuelCost, 0).toFixed(0)}
+                      </p>
+                      <p className="text-slate-400 text-xs">lifetime</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
     }
